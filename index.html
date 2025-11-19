@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Agenda Mensal — Standalone (HTML/CSS/JS)</title>
+<style>
+  /* Reset simples */
+  * { box-sizing: border-box; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+  body { margin: 0; background:#f3f4f6; color:#111827; padding:18px; }
+  .container { max-width:1200px; margin:0 auto; }
+  header { display:flex; gap:16px; align-items:center; margin-bottom:14px; }
+  h1 { margin:0; font-size:20px; }
+  .controls { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .btn { background:#2563eb; color:white; padding:8px 10px; border-radius:8px; border:none; cursor:pointer; font-size:13px; }
+  .btn.secondary { background:#e5e7eb; color:#111827; }
+  .btn.red { background:#ef4444; }
+  .btn.green { background:#16a34a; }
+  .grid-week { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; }
+  .week-day { text-align:center; padding:8px 6px; background:#fff; border-radius:6px; font-weight:600; font-size:12px; }
+  .calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .day { min-height:90px; background:#fff; padding:8px; border-radius:8px; position:relative; overflow:hidden; border:1px solid #e6edf3; }
+  .day.dim { opacity:0.45; }
+  .day .date { font-weight:700; font-size:13px; }
+  .day .count { position:absolute; top:8px; right:8px; font-size:11px; color:#6b7280; }
+  .appt { background:#e6f0ff; padding:6px; border-radius:6px; margin-top:6px; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .panel { margin-top:12px; display:grid; grid-template-columns:2fr 1fr; gap:12px; }
+  .card { background:#fff; padding:12px; border-radius:8px; border:1px solid #e6edf3; }
+  label { display:block; font-size:13px; margin-bottom:4px; color:#374151; }
+  input[type="text"], input[type="date"], input[type="time"], select, input[type="number"], textarea {
+    width:100%; padding:8px; border-radius:6px; border:1px solid #d1d5db; margin-bottom:8px;
+  }
+  .small { font-size:12px; color:#6b7280; }
+  footer { margin-top:18px; font-size:12px; color:#6b7280; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .muted { color:#6b7280; font-size:13px; }
+  .conflict { color:#ef4444; font-weight:700; }
+  .actions { display:flex; gap:8px; margin-top:8px; }
+  .export-area { display:flex; gap:8px; align-items:center; }
+  .badge { background:#eef2ff; color:#3730a3; padding:6px 8px; border-radius:999px; font-weight:600; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Agenda Mensal — Agendamento e Reserva de Equipamentos</h1>
+    <div class="controls">
+      <button id="prevMonth" class="btn secondary">‹ Mês anterior</button>
+      <div id="currentMonth" class="muted"></div>
+      <button id="nextMonth" class="btn secondary">Mês próximo ›</button>
+      <div style="width:12px"></div>
+      <button id="enterMaster" class="btn">Entrar Master</button>
+      <button id="exportBtn" class="btn">Exportar JSON</button>
+      <input id="importInput" type="file" accept="application/json" style="display:none" />
+      <button id="importBtn" class="btn secondary">Importar JSON</button>
+    </div>
+  </header>
+
+  <div class="grid-week">
+    <div class="week-day">Dom</div><div class="week-day">Seg</div><div class="week-day">Ter</div><div class="week-day">Qua</div><div class="week-day">Qui</div><div class="week-day">Sex</div><div class="week-day">Sab</div>
+  </div>
+
+  <div id="calendar" class="calendar"></div>
+
+  <div class="panel">
+    <div class="card" style="min-height:220px;">
+      <h3 style="margin-top:0">Dia selecionado: <span id="selectedDayText">Nenhum</span></h3>
+      <div id="apptsList" style="max-height:360px; overflow:auto;"></div>
+      <div class="small" style="margin-top:8px">Clique em um dia para ver os agendamentos. Sem Master Key você apenas visualizará.</div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Novo Agendamento</h3>
+
+      <label>Título</label>
+      <input id="titleInput" type="text" placeholder="Ex: Instalação - Cliente X" />
+
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1">
+          <label>Data início</label>
+          <input id="startDate" type="date" />
+        </div>
+        <div style="flex:1">
+          <label>Data fim</label>
+          <input id="endDate" type="date" />
+        </div>
+      </div>
+
+      <label>Horário início</label>
+      <input id="startTime" type="time" value="09:00" />
+
+      <label>Duração (min)</label>
+      <input id="duration" type="number" value="60" min="1" />
+
+      <label>Cliente (nome)</label>
+      <input id="client" type="text" placeholder="Nome do cliente" />
+
+      <label>WhatsApp do cliente (ex: 5511999999999)</label>
+      <input id="clientPhone" type="text" placeholder="5511999999999" />
+
+      <label>Técnicos (selecione múltiplos com Ctrl/Shift)</label>
+      <select id="techs" multiple size="4"></select>
+
+      <label>Equipamentos (múltiplos)</label>
+      <select id="equip" multiple size="4"></select>
+
+      <div class="actions">
+        <button id="createBtn" class="btn green">Criar Agendamento</button>
+        <button id="clearBtn" class="btn secondary">Limpar</button>
+      </div>
+
+      <div style="margin-top:10px">
+        <div class="badge" id="modeBadge">Modo: Leitura</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>Dados persistidos no seu navegador (localStorage). Use <strong>Exportar JSON</strong> para backup / versionamento.</div>
+      <div class="export-area">
+        <button id="resetBtn" class="btn secondary">Reset Dados</button>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script>
+/*
+  Agenda standalone:
+  - all data persisted in localStorage under key "scheduler_data"
+  - master key protected editing: set a master key; only when unlocked edits allowed
+  - conflict rules: equipment cannot be used by different technicians for different clients
+    on the same date/time. Allowed if same client.
+*/
+
+// --- sample initial data (will be overridden by storage if present) ---
+const DEFAULT = {
+  technicians: [
+    { id: 't1', name: 'Ana Silva' },
+    { id: 't2', name: 'Carlos Pereira' },
+    { id: 't3', name: 'Mariana Costa' }
+  ],
+  equipment: [
+    { id: 'e1', name: 'Laser A-100' },
+    { id: 'e2', name: 'Macchina X' },
+    { id: 'e3', name: 'Vácuo Pro' }
+  ],
+  clients: [
+    { id: 'c1', name: 'Clínica Alfa', phone: '5511999999999' },
+    { id: 'c2', name: 'Cliente Beta', phone: '5511988888888' }
+  ],
+  appointments: [
+    // demo appointments (dates relative to today)
+  ]
+};
+
+const STORAGE_KEY = 'scheduler_data_v1';
+const MASTER_KEY_KEY = 'scheduler_master_key_v1';
+let data = loadData();
+let masterUnlocked = false;
+let currentViewDate = new Date();
+let selectedDay = null;
+
+// --- DOM refs
+const calendarEl = document.getElementById('calendar');
+const currentMonthEl = document.getElementById('currentMonth');
+const selectedDayText = document.getElementById('selectedDayText');
+const apptsList = document.getElementById('apptsList');
+const modeBadge = document.getElementById('modeBadge');
+
+const titleInput = document.getElementById('titleInput');
+const startDateInput = document.getElementById('startDate');
+const endDateInput = document.getElementById('endDate');
+const startTimeInput = document.getElementById('startTime');
+const durationInput = document.getElementById('duration');
+const clientInput = document.getElementById('client');
+const clientPhoneInput = document.getElementById('clientPhone');
+const techsSelect = document.getElementById('techs');
+const equipSelect = document.getElementById('equip');
+
+document.getElementById('prevMonth').addEventListener('click', ()=>{ changeMonth(-1); });
+document.getElementById('nextMonth').addEventListener('click', ()=>{ changeMonth(1); });
+document.getElementById('createBtn').addEventListener('click', handleCreate);
+document.getElementById('clearBtn').addEventListener('click', clearForm);
+document.getElementById('enterMaster').addEventListener('click', enterMasterFlow);
+document.getElementById('exportBtn').addEventListener('click', exportJSON);
+document.getElementById('importBtn').addEventListener('click', ()=>document.getElementById('importInput').click());
+document.getElementById('importInput').addEventListener('change', importJSON);
+document.getElementById('resetBtn').addEventListener('click', resetData);
+
+// initial setup
+init();
+
+function init(){
+  // if storage empty, populate with defaults and one demo appointment today
+  if(!localStorage.getItem(STORAGE_KEY)){
+    // demo appointment today
+    const today = isoDate(new Date());
+    DEFAULT.appointments.push({
+      id: 'a-' + Date.now(),
+      title: 'Consulta - Clínica Alfa',
+      startDate: today,
+      endDate: today,
+      startTime: '09:00',
+      durationMins: 90,
+      techIds: ['t1'],
+      clientId: 'c1',
+      equipmentIds: ['e1']
+    });
+    saveData(DEFAULT);
+  }
+  renderControls();
+  renderCalendar();
+  fillSelects();
+  clearForm();
+  updateModeBadge();
+}
+
+function loadData(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  } catch(e){}
+  return JSON.parse(JSON.stringify(DEFAULT));
+}
+
+function saveData(obj){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(obj, null, 2));
+  data = obj;
+}
+
+function changeMonth(delta){
+  currentViewDate.setMonth(currentViewDate.getMonth() + delta);
+  renderCalendar();
+}
+
+function renderControls(){
+  currentMonthEl.textContent = currentViewDate.toLocaleString('pt-BR', { month:'long', year:'numeric' });
+}
+
+function renderCalendar(){
+  renderControls();
+  calendarEl.innerHTML = '';
+  const start = new Date(currentViewDate.getFullYear(), currentViewDate.getMonth(), 1);
+  const end = new Date(currentViewDate.getFullYear(), currentViewDate.getMonth()+1, 0);
+  const startWeekday = start.getDay(); // 0..6
+  // compute first cell date (may belong to previous month)
+  const firstCell = new Date(start);
+  firstCell.setDate(firstCell.getDate() - startWeekday);
+
+  const cells = [];
+  for(let i=0;i<42;i++){
+    const d = new Date(firstCell);
+    d.setDate(firstCell.getDate() + i);
+    cells.push(d);
+  }
+
+  cells.forEach(d => {
+    const iso = isoDate(d);
+    const inMonth = d.getMonth() === currentViewDate.getMonth();
+    const appts = appointmentsOn(iso);
+    const dayEl = document.createElement('div');
+    dayEl.className = 'day' + (inMonth ? '' : ' dim');
+    dayEl.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;"><div class="date">'+d.getDate()+'</div><div class="count">'+appts.length+' ag.</div></div>';
+    // show up to 3 appts
+    const list = document.createElement('div');
+    list.style.marginTop = '6px';
+    appts.slice(0,3).forEach(a=>{
+      const e = document.createElement('div');
+      e.className = 'appt';
+      e.title = a.title;
+      e.textContent = (a.startTime||'') + ' • ' + a.title;
+      list.appendChild(e);
+    });
+    if(appts.length>3){
+      const more = document.createElement('div');
+      more.className = 'small';
+      more.textContent = '+ ' + (appts.length - 3) + ' mais';
+      list.appendChild(more);
+    }
+    dayEl.appendChild(list);
+
+    dayEl.addEventListener('click', ()=>{
+      selectedDay = iso;
+      selectedDayText.textContent = selectedDay;
+      // set form dates for convenience
+      startDateInput.value = selectedDay;
+      endDateInput.value = selectedDay;
+      renderApptsList();
+    });
+
+    calendarEl.appendChild(dayEl);
+  });
+}
+
+function appointmentsOn(dateStr){
+  return (data.appointments || []).filter(a => a.startDate <= dateStr && a.endDate >= dateStr).sort((x,y)=> (x.startTime||'').localeCompare(y.startTime||''));
+}
+
+function renderApptsList(){
+  apptsList.innerHTML = '';
+  if(!selectedDay){
+    apptsList.innerHTML = '<div class="muted">Nenhum dia selecionado. Clique em um dia no calendário.</div>';
+    return;
+  }
+  const appts = appointmentsOn(selectedDay);
+  if(appts.length===0){
+    apptsList.innerHTML = '<div class="muted">Nenhum agendamento neste dia.</div>';
+    return;
+  }
+  appts.forEach(a=>{
+    const div = document.createElement('div');
+    div.style.borderBottom = '1px solid #eef2f6';
+    div.style.padding = '8px 0';
+    div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:start;"><div>
+      <div style="font-weight:700">${a.title}</div>
+      <div class="small">${a.startDate}${a.startDate!==a.endDate ? ' → '+a.endDate : ''} • ${a.startTime} — ${computeEnd(a.startTime,a.durationMins)}</div>
+      <div class="small">Técnicos: ${a.techIds.map(id=>findTechName(id)).join(', ')}</div>
+      <div class="small">Equipamentos: ${a.equipmentIds.map(id=>findEquipName(id)).join(', ')}</div>
+      <div class="small">Cliente: ${findClientName(a.clientId)||a.clientName || ''}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <button class="btn green" data-id="${a.id}" style="padding:6px 8px;font-size:12px">Notificar</button>
+      <button class="btn red" data-del="${a.id}" style="padding:6px 8px;font-size:12px">Remover</button>
+    </div></div>`;
+    apptsList.appendChild(div);
+  });
+
+  // attach handlers (not master protected for notify; delete requires master)
+  apptsList.querySelectorAll('button[data-id]').forEach(b=>{
+    b.addEventListener('click', (ev)=>{
+      const id = ev.currentTarget.getAttribute('data-id');
+      const a = data.appointments.find(x=>x.id===id);
+      if(a) notifyWhatsApp(a);
+    });
+  });
+  apptsList.querySelectorAll('button[data-del]').forEach(b=>{
+    b.addEventListener('click', (ev)=>{
+      if(!ensureMaster()) return alert('Edição bloqueada: ative Master Key para remover agendamentos.');
+      const id = ev.currentTarget.getAttribute('data-del');
+      removeAppointment(id);
+    });
+  });
+}
+
+function findTechName(id){ return (data.technicians.find(t=>t.id===id)||{}).name || id; }
+function findEquipName(id){ return (data.equipment.find(e=>e.id===id)||{}).name || id; }
+function findClientName(id){ return (data.clients.find(c=>c.id===id)||{}).name || id; }
+
+function computeEnd(start, duration){
+  if(!start) return '';
+  const [h,m] = (start||'00:00').split(':').map(Number);
+  const endMinutes = h*60 + m + Number(duration||0);
+  const eh = Math.floor(endMinutes/60)%24;
+  const em = endMinutes%60;
+  return String(eh).padStart(2,'0') + ':' + String(em).padStart(2,'0');
+}
+
+function fillSelects(){
+  techsSelect.innerHTML = '';
+  equipSelect.innerHTML = '';
+  data.technicians.forEach(t=>{
+    const opt = document.createElement('option');
+    opt.value = t.id; opt.textContent = t.name;
+    techsSelect.appendChild(opt);
+  });
+  data.equipment.forEach(e=>{
+    const opt = document.createElement('option');
+    opt.value = e.id; opt.textContent = e.name;
+    equipSelect.appendChild(opt);
+  });
+}
+
+function clearForm(){
+  titleInput.value = '';
+  const today = isoDate(new Date());
+  startDateInput.value = today;
+  endDateInput.value = today;
+  startTimeInput.value = '09:00';
+  durationInput.value = 60;
+  clientInput.value = '';
+  clientPhoneInput.value = '';
+  techsSelect.selectedIndex = -1;
+  equipSelect.selectedIndex = -1;
+}
+
+function ensureMaster(){
+  // returns true if masterUnlocked or if no master set (first time)
+  const storedKey = localStorage.getItem(MASTER_KEY_KEY);
+  if(!storedKey){
+    // no master set — ask to create one
+    if(confirm('Nenhuma Master Key definida. Deseja definir uma agora para proteger edições?')){
+      const key = prompt('Digite a Master Key (senha curta) — memorize-a:');
+      if(key){
+        localStorage.setItem(MASTER_KEY_KEY, key);
+        masterUnlocked = true;
+        updateModeBadge();
+        alert('Master Key definida. Agora você pode editar.');
+        return true;
+      }
+      return false;
+    }
+    return false;
+  }
+  return masterUnlocked;
+}
+
+function enterMasterFlow(){
+  const storedKey = localStorage.getItem(MASTER_KEY_KEY);
+  if(!storedKey){
+    if(confirm('Criar Master Key para proteger edições?')){
+      const key = prompt('Defina sua Master Key (senha curta):');
+      if(key){
+        localStorage.setItem(MASTER_KEY_KEY, key);
+        masterUnlocked = true;
+        updateModeBadge();
+        alert('Master Key criada e você está autenticado como Master.');
+      }
+    }
+    return;
+  }
+  // otherwise ask for key
+  const attempt = prompt('Digite a Master Key para desbloquear edições:');
+  if(attempt===null) return;
+  if(attempt === storedKey){
+    masterUnlocked = true;
+    updateModeBadge();
+    alert('Master mode ativado. Você pode editar.');
+  } else {
+    alert('Master key incorreta.');
+  }
+}
+
+function updateModeBadge(){
+  if(masterUnlocked){
+    modeBadge.textContent = 'Modo: Master (edição habilitada)';
+    modeBadge.style.background = '#ecfdf5';
+    modeBadge.style.color = '#065f46';
+  } else {
+    modeBadge.textContent = 'Modo: Leitura';
+    modeBadge.style.background = '#eef2ff';
+    modeBadge.style.color = '#3730a3';
+  }
+}
+
+function handleCreate(){
+  if(!ensureMaster()) return alert('Edição bloqueada: ative Master Key para criar agendamentos.');
+  const title = titleInput.value.trim();
+  const startDate = startDateInput.value;
+  const endDate = endDateInput.value || startDate;
+  const startTime = startTimeInput.value || '09:00';
+  const durationMins = Number(durationInput.value)||60;
+  const clientName = clientInput.value.trim();
+  const clientPhone = clientPhoneInput.value.trim();
+  const techIds = Array.from(techsSelect.selectedOptions).map(o=>o.value);
+  const equipmentIds = Array.from(equipSelect.selectedOptions).map(o=>o.value);
+
+  if(!title || !startDate || !clientName || techIds.length===0 || equipmentIds.length===0){
+    return alert('Preencha: título, data início, cliente, técnicos e equipamentos.');
+  }
+
+  // create or find client id
+  let clientId = data.clients.find(c=>c.name === clientName)?.id;
+  if(!clientId){
+    // generate id and add client
+    clientId = 'c' + (Date.now()%100000);
+    data.clients.push({ id: clientId, name: clientName, phone: clientPhone });
+  } else {
+    // update phone if provided
+    if(clientPhone) {
+      const cl = data.clients.find(c=>c.id===clientId);
+      if(cl) cl.phone = clientPhone;
+    }
+  }
+
+  const newAppt = {
+    id: 'a' + Date.now(),
+    title,
+    startDate,
+    endDate,
+    startTime,
+    durationMins,
+    techIds,
+    clientId,
+    equipmentIds
+  };
+
+  // validate conflicts
+  const conflicts = findConflictsForNew(newAppt);
+  if(conflicts.length){
+    const msgs = conflicts.map(c => `${c.date}: Equipamento "${findEquipName(c.eqId)}" já reservado por ${c.appointment.techIds.map(tid=>findTechName(tid)).join(', ')} (cliente: ${findClientName(c.appointment.clientId)}) às ${c.appointment.startTime}-${computeEnd(c.appointment.startTime,c.appointment.durationMins)}`);
+    return alert('Conflitos detectados:\\n\\n' + msgs.join('\\n'));
+  }
+
+  data.appointments.push(newAppt);
+  saveData(data);
+  renderCalendar();
+  renderApptsList();
+  clearForm();
+  fillSelects();
+}
+
+function findConflictsForNew(newAppt){
+  const conflicts = [];
+  // iterate each date in range
+  const s = new Date(newAppt.startDate);
+  const e = new Date(newAppt.endDate);
+  for(let d=new Date(s); d<=e; d.setDate(d.getDate()+1)){
+    const ds = isoDate(new Date(d));
+    const existing = appointmentsOn(ds);
+    for(const eqId of (newAppt.equipmentIds||[])){
+      const related = existing.filter(a=> (a.equipmentIds||[]).includes(eqId));
+      for(const r of related){
+        if(r.clientId === newAppt.clientId) continue; // same client allowed
+        // do times overlap?
+        if(timesOverlap(newAppt.startTime, newAppt.durationMins, r.startTime, r.durationMins)){
+          conflicts.push({ date: ds, eqId, appointment: r });
+        }
+      }
+    }
+  }
+  return conflicts;
+}
+
+function timesOverlap(aStart, aDur, bStart, bDur){
+  const [ah,am] = (aStart||'00:00').split(':').map(Number);
+  const [bh,bm] = (bStart||'00:00').split(':').map(Number);
+  const a0 = ah*60 + am; const a1 = a0 + Number(aDur||0);
+  const b0 = bh*60 + bm; const b1 = b0 + Number(bDur||0);
+  return Math.max(a0,b0) < Math.min(a1,b1);
+}
+
+function removeAppointment(id){
+  data.appointments = data.appointments.filter(a=>a.id!==id);
+  saveData(data);
+  renderCalendar();
+  renderApptsList();
+  fillSelects();
+}
+
+// WhatsApp notify
+function notifyWhatsApp(appointment){
+  const client = data.clients.find(c=>c.id===appointment.clientId) || {};
+  const phone = client.phone || '';
+  const message = `Olá ${client.name||''}%0ASeu agendamento: ${appointment.title||''}%0AData: ${appointment.startDate} até ${appointment.endDate}%0AHora: ${appointment.startTime} (duração ${appointment.durationMins} min)%0ATécnicos: ${appointment.techIds.map(id=>findTechName(id)).join(', ')}%0AEquipamentos: ${appointment.equipmentIds.map(id=>findEquipName(id)).join(', ')}`;
+  if(!phone) return alert('Telefone do cliente não informado.');
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(message), '_blank');
+}
+
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'scheduler-export-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(ev){
+  const f = ev.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      const obj = JSON.parse(e.target.result);
+      if(!confirm('Importar irá substituir os dados atuais. Continuar?')) return;
+      saveData(obj);
+      masterUnlocked = false;
+      updateModeBadge();
+      renderCalendar();
+      fillSelects();
+      renderApptsList();
+      alert('Importado com sucesso.');
+    } catch(err){
+      alert('Arquivo inválido.');
+    }
+  };
+  reader.readAsText(f);
+  ev.target.value = '';
+}
+
+function resetData(){
+  if(!confirm('Resetar todos os dados para o estado inicial?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(MASTER_KEY_KEY);
+  masterUnlocked = false;
+  data = loadData();
+  renderCalendar();
+  fillSelects();
+  renderApptsList();
+  updateModeBadge();
+  alert('Dados resetados.');
+}
+
+function isoDate(d){ const z = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return z.toISOString().slice(0,10); }
+</script>
+</body>
+</html>
